@@ -1,15 +1,24 @@
 package main
 
 import (
+	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/jmoiron/sqlx"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 var (
 	validate           *validator.Validate
 	watchListIdCounter = 68
 	watchLists         = make(map[string]*WatchList)
+	schema             = `
+	CREATE TABLE WatchList (
+		id varchar(255),
+		name varchar(255)
+	);`
 )
 
 type WatchList struct {
@@ -20,9 +29,45 @@ type WatchList struct {
 func main() {
 	validate = validator.New(validator.WithRequiredStructEnabled())
 
-	// dbFile := "watchthis.db"
-	// createDB(dbFile)
-	// createTable(dbFile)
+	dbFile := "./testDB.db"
+	if _, err := os.Stat(dbFile); err == nil {
+		if err := os.Remove(dbFile); err != nil {
+			log.Fatalf("Failed to remove existing database file: %v", err)
+		}
+		log.Println("Existing database file removed")
+	}
+
+	db, err := sqlx.Connect("sqlite3", "./testDB.db")
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	db.MustExec(schema)
+
+	// var testQuery string
+	testQuery := "INSERT INTO WatchList (id, name) VALUES (:id, :name)"
+
+	testWatchList := WatchList{
+		ID:   "1",
+		Name: func() *string { name := "testList"; return &name }(),
+	}
+
+	tx := db.MustBegin()
+	_, err = tx.NamedExec(testQuery, testWatchList)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	savedWatchLists := []WatchList{}
+	err = db.Select(&savedWatchLists, "SELECT * FROM WatchList")
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	// db, err := sql.Open("sqlite3", dbFile)
 	// if err != nil {
